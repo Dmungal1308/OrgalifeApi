@@ -1,6 +1,8 @@
 package ktor.routes
 
+import com.data.models.Exercise
 import com.data.repository.ExerciseRepository
+import com.domain.usecase.InsertExerciseUseCase
 import io.ktor.server.application.*
 import io.ktor.server.auth.authenticate
 import io.ktor.server.auth.jwt.JWTPrincipal
@@ -36,31 +38,45 @@ fun Route.exerciseRoutes() {
                 }
             }
             post {
+                // 1. Se extrae el token JWT del request y se obtiene el claim "userId"
                 val principal = call.principal<JWTPrincipal>()
                 val userId = principal?.payload?.getClaim("userId")?.asInt()
                 if (userId == null) {
+                    // Si no se encuentra el userId en el token, se responde con error
                     call.respond(mapOf("error" to "Token inválido"))
                     return@post
                 }
                 try {
+                    // 2. Se recibe la petición y se parsea al objeto ExerciseRequest (que contiene los datos necesarios)
                     val req = call.receive<ExerciseRequest>()
-                    logger.info("ExerciseRequest recibido: $req")
-                    val exercise = exerciseRepository.createExercise(
+                    // 3. Se construye el objeto Exercise utilizando los datos recibidos y el userId obtenido del token.
+                    //    Aquí 'id' es 0 (ya que se espera que la base de datos asigne un valor) y 'imageBase64' contiene el string en formato base64.
+                    val exercise = Exercise(
+                        id = 0,
                         name = req.name,
                         description = req.description,
                         imageBase64 = req.imageBase64,
                         ownerId = userId
                     )
-                    if (exercise != null) {
-                        call.respond(exercise)
-                    } else {
+                    // 4. Se crea el caso de uso para insertar el ejercicio, pasándole el repositorio correspondiente
+                    val useCase = InsertExerciseUseCase(exerciseRepository)
+                    // 5. Se asigna el objeto exercise al use case
+                    useCase.exercise = exercise
+                    // 6. Se invoca el caso de uso para procesar el ejercicio (crear el directorio, decodificar la imagen y guardarla, insertar en la BD)
+                    val createdExercise = useCase()
+                    // 7. Se responde con el objeto creado o un error en caso de que falle el proceso
+                    if (createdExercise != null)
+                        call.respond(createdExercise)
+                    else
                         call.respond(mapOf("error" to "No se pudo crear el Exercise"))
-                    }
                 } catch (e: Exception) {
+                    // Se loguea el error y se responde con un mensaje de error
                     logger.error("Error al recibir ExerciseRequest", e)
                     call.respond(mapOf("error" to "Error al parsear la petición"))
                 }
             }
+
+
 
             put("/{id}") {
                 val id = call.parameters["id"]?.toIntOrNull()

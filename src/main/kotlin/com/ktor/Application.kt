@@ -10,6 +10,7 @@ fun main() {
     DatabaseFactory.init()
 
     embeddedServer(Netty, host = "0.0.0.0", port = 8080) {
+        ApplicationContext.context = this
         configureSecurity()
         configureRouting()
         configureSerialization()
