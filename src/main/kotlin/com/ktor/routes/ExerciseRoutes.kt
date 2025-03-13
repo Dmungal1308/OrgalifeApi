@@ -19,72 +19,69 @@ fun Route.exerciseRoutes() {
         route("/exercises") {
             get {
                 val exercises = exerciseRepository.getAllExercises()
-                logger.info("Ejercicios recibidos: ${exercises.size}")
+                logger.info("Lista de ejercicios consultada, total: ${exercises.size}")
                 call.respond(exercises)
             }
-            get("/{id}") {
-                val id = call.parameters["id"]?.toIntOrNull()
-                if (id == null) {
-                    call.respond(mapOf("error" to "ID inválido"))
-                    return@get
-                }
-                val exercise = exerciseRepository.getExerciseById(id)
-                if (exercise == null) {
-                    call.respond(mapOf("error" to "Exercise no encontrado"))
-                } else {
-                    call.respond(exercise)
-                }
-            }
+
             post {
                 val principal = call.principal<JWTPrincipal>()
                 val userId = principal?.payload?.getClaim("userId")?.asInt()
                 if (userId == null) {
+                    logger.warn("Intento de creación de ejercicio con token inválido.")
                     call.respond(mapOf("error" to "Token inválido"))
                     return@post
                 }
-                try {
-                    val req = call.receive<ExerciseRequest>()
-                    logger.info("ExerciseRequest recibido: $req")
-                    val exercise = exerciseRepository.createExercise(
-                        name = req.name,
-                        description = req.description,
-                        imageBase64 = req.imageBase64,
-                        ownerId = userId
-                    )
-                    if (exercise != null) {
-                        call.respond(exercise)
-                    } else {
-                        call.respond(mapOf("error" to "No se pudo crear el Exercise"))
-                    }
-                } catch (e: Exception) {
-                    logger.error("Error al recibir ExerciseRequest", e)
-                    call.respond(mapOf("error" to "Error al parsear la petición"))
+
+                val req = call.receive<ExerciseRequest>()
+                logger.info("Solicitud para crear ejercicio: ${req.name} por usuario ID: $userId")
+
+                val exercise = exerciseRepository.createExercise(
+                    name = req.name,
+                    description = req.description,
+                    imageBase64 = req.imageBase64,
+                    ownerId = userId
+                )
+
+                if (exercise != null) {
+                    logger.info("Ejercicio creado exitosamente con ID: ${exercise.id}")
+                    call.respond(exercise)
+                } else {
+                    logger.error("Error al crear ejercicio: ${req.name}")
+                    call.respond(mapOf("error" to "No se pudo crear el ejercicio"))
                 }
             }
 
             put("/{id}") {
                 val id = call.parameters["id"]?.toIntOrNull()
                 if (id == null) {
+                    logger.warn("Solicitud inválida para editar ejercicio sin ID válido.")
                     call.respond(mapOf("error" to "ID inválido"))
                     return@put
                 }
+
                 val principal = call.principal<JWTPrincipal>()
                 val userId = principal?.payload?.getClaim("userId")?.asInt()
                 if (userId == null) {
                     call.respond(mapOf("error" to "Token inválido"))
                     return@put
                 }
-                // Verificamos que el ejercicio existe y que el usuario autenticado es el owner
+
                 val existingExercise = exerciseRepository.getExerciseById(id)
                 if (existingExercise == null) {
+                    logger.warn("Intento de edición fallido, ejercicio con ID $id no encontrado.")
                     call.respond(mapOf("error" to "Ejercicio no encontrado"))
                     return@put
                 }
+
                 if (existingExercise.ownerId != userId) {
+                    logger.warn("Usuario $userId intentó editar un ejercicio que no es suyo (ID: $id)")
                     call.respond(mapOf("error" to "No autorizado"))
                     return@put
                 }
+
                 val req = call.receive<ExerciseRequest>()
+                logger.info("Usuario $userId actualiza el ejercicio ID: $id")
+
                 val updatedExercise = exerciseRepository.updateExercise(
                     id,
                     req.name,
@@ -92,43 +89,55 @@ fun Route.exerciseRoutes() {
                     req.imageBase64,
                     userId
                 )
+
                 if (updatedExercise != null) {
-                    // Devolvemos el objeto actualizado
+                    logger.info("Ejercicio con ID $id actualizado exitosamente.")
                     call.respond(updatedExercise)
                 } else {
-                    call.respond(mapOf("error" to "No se pudo actualizar el Exercise"))
+                    logger.error("Error al actualizar ejercicio con ID $id.")
+                    call.respond(mapOf("error" to "No se pudo actualizar el ejercicio"))
                 }
-
-
             }
+
             delete("/{id}") {
                 val id = call.parameters["id"]?.toIntOrNull()
                 if (id == null) {
+                    logger.warn("Solicitud inválida para eliminar ejercicio sin ID válido.")
                     call.respond(mapOf("error" to "ID inválido"))
                     return@delete
                 }
+
                 val principal = call.principal<JWTPrincipal>()
                 val userId = principal?.payload?.getClaim("userId")?.asInt()
                 if (userId == null) {
+                    logger.warn("Intento de eliminación de ejercicio sin autenticación válida.")
                     call.respond(mapOf("error" to "Token inválido"))
                     return@delete
                 }
+
                 val existingExercise = exerciseRepository.getExerciseById(id)
                 if (existingExercise == null) {
+                    logger.warn("Intento de eliminación fallido, ejercicio con ID $id no encontrado.")
                     call.respond(mapOf("error" to "Ejercicio no encontrado"))
                     return@delete
                 }
+
                 if (existingExercise.ownerId != userId) {
+                    logger.warn("Usuario $userId intentó eliminar un ejercicio que no es suyo (ID: $id)")
                     call.respond(mapOf("error" to "No autorizado"))
                     return@delete
                 }
+
                 val deleted = exerciseRepository.deleteExercise(id)
                 if (deleted) {
+                    logger.info("Ejercicio con ID $id eliminado correctamente.")
                     call.respond(mapOf("success" to true))
                 } else {
-                    call.respond(mapOf("error" to "No se pudo eliminar el Exercise"))
+                    logger.error("No se pudo eliminar el ejercicio con ID $id.")
+                    call.respond(mapOf("error" to "No se pudo eliminar el ejercicio"))
                 }
             }
         }
     }
 }
+
